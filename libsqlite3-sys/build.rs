@@ -614,12 +614,15 @@ mod bindings {
         // cross compiling.
         if generating_bundled_bindings() || is_cross_compiling {
             // Get rid of va_list, as it's not
+            // It seems to be a bug in bindgen because the blocklist_function
+            // does not include the function definition but still outputs the
+            // variable definition which is an Option to an extern method.
+            // The following code in loadable_extension should take care of it
+            // but it still ends up in the generated file.
             bindings = bindings
                 .blocklist_function("sqlite3_vmprintf")
                 .blocklist_function("sqlite3_vsnprintf")
-                .blocklist_function("sqlite3_str_vappendf")
-                .blocklist_type("va_list")
-                .blocklist_item("__.*");
+                .blocklist_function("sqlite3_str_vappendf");
         }
 
         let bindings = bindings
@@ -721,7 +724,7 @@ mod loadable_extension {
             let tokens = if "db_config" == name {
                 quote::quote! {
                     static #ptr_name: ::std::sync::atomic::AtomicPtr<()> = ::std::sync::atomic::AtomicPtr::new(::std::ptr::null_mut());
-                    pub unsafe fn #sqlite3_fn_name(#args arg3: ::std::os::raw::c_int, arg4: *mut ::std::os::raw::c_int) #ty {
+                    pub unsafe fn #sqlite3_fn_name(#args arg3: ::std::os::raw::c_int, arg4: *const ::std::os::raw::c_int) #ty {
                         let ptr = #ptr_name.load(::std::sync::atomic::Ordering::Acquire);
                         assert!(!ptr.is_null(), "SQLite API not initialized");
                         let fun: unsafe extern "C" fn(#args #varargs) #ty = ::std::mem::transmute(ptr);
